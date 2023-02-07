@@ -162,10 +162,20 @@ app.get('/members', (req, res) => {
     var html = `
     <h1>Hello ` + req.session.email + `</hi>
     ` + `<br><img src="` + images[randomIndex] + `"/>
-    <form action='/' method='get'>
+    <form action='/logout' method='get'>
         <button>Sign out</button>
     </form>`;
     res.send(html);
+});
+
+app.get('/logout', (req, res) => {
+    req.session.destroy(err => {
+        if (err) {
+            console.log(err);
+        } else {
+            res.redirect('/');
+        }
+    });
 });
 
 app.use(express.static(__dirname + "/public"))
