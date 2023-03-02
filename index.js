@@ -1,3 +1,5 @@
+require('./utils');
+
 require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
@@ -5,16 +7,23 @@ const MongoStore = require('connect-mongo');
 const bcrypt = require('bcrypt');
 const saltRounds = 12;
 
+// Connecting to a MySQL database
+const database = include('databaseConnection');
+const db_utils = include('database/db_utils');
+const db_users = include('database/users');
+const db_todos = include('database/todos')
+const success = db_utils.printMySQLVersion();
+
 const port = process.env.PORT || 3000;
 
 const app = express();
 
 const expireTime = 24 * 60 * 60 * 1000;
 
+app.set('view engine', 'ejs');
+
 app.use(express.urlencoded({ extended: false }));
 
-// In Memory 'Database'
-var users = [];
 
 /* secret information section */
 const mongodb_user = process.env.MONGODB_USER;
@@ -40,15 +49,7 @@ app.use(session({
 
 // Main Menu
 app.get('/', (req, res) => {
-    var html = `
-    <form action='/signup' method='get'>
-        <button>Sign up</button>
-    </form>
-    <form action='/login' method='get'>
-        <button>Log in</button>
-    </form>
-    `;
-    res.send(html);
+    res.render("index");
 });
 
 // route to Signup
@@ -57,26 +58,10 @@ app.get('/signup', (req, res) => {
     var missingPass = req.query.passwordmia;
     var missingUser = req.query.usernamemia;
 
-    var html = `
-    <form action='/submitUser' method='post'>
-    <input name='username' type='text' placeholder='username'>
-    <input name='email' type='email' placeholder='email'>
-    <input name='password' type='password' placeholder='password'>
-      <button>Submit</button>
-    </form>
-  `;
-    if (missingUser) {
-        html += "<br> Please provide a Username."
-    } else if (missingEmail) {
-        html += "<br> Please provide an Email Address."
-    } else if (missingPass) {
-        html += "<br> Please provide a Password."
-    }
-
-    res.send(html);
+    res.render("signup", { missingUser: missingUser, missingEmail: missingEmail, missingPass: missingPass });
 });
 
-app.post('/submitUser', (req, res) => {
+app.post('/submitUser', async(req, res) => {
     var username = req.body.username;
     var password = req.body.password;
     var email = req.body.email;
@@ -89,10 +74,22 @@ app.post('/submitUser', (req, res) => {
     } else {
         var hashedPassword = bcrypt.hashSync(password, saltRounds);
 
-        users.push({ username: username, email: email, password: hashedPassword });
+        // Create the tables if not exist
+        const create_tables = include('database/create_tables');
 
+        var success_table = create_tables.createTables();
 
-        res.redirect('/login')
+        if (success_table) {
+            var success = await db_users.createUser({ user: username, email: email, hashedPassword: hashedPassword });
+
+            if (success) {
+                res.redirect('/login')
+            } else {
+                res.render("errorMessage", { error: "Failed to create user." });
+            }
+        } else {
+            console.log("Error Table")
+        }
     }
 });
 
@@ -100,26 +97,12 @@ app.post('/submitUser', (req, res) => {
 app.get('/login', (req, res) => {
     var missingEmail = req.query.emailmia;
     var missingPass = req.query.passwordmia;
+    var missingAccount = req.query.accountmia;
 
-    var html =
-        `log in
-    <form action='/loggingin' method='post'>
-        <input name='email' type='email' placeholder='email'>
-        <input name='password' type='password' placeholder='password'>
-        <button>Submit</button>
-    </form>
-    `
-    if (missingEmail && missingPass) {
-        html += "<br> Email and Password not found."
-    } else if (missingEmail) {
-        html += "<br> Email not found."
-    } else if (missingPass) {
-        html += "<br> Password not found."
-    }
-    res.send(html);
+    res.render("login", { missingEmail: missingEmail, missingPass: missingPass, missingAccount: missingAccount });
 });
 
-app.post('/loggingin', (req, res) => {
+app.post('/loggingin', async (req, res) => {
     var email = req.body.email;
     var password = req.body.password;
 
@@ -130,16 +113,26 @@ app.post('/loggingin', (req, res) => {
     } else if (!password) {
         res.redirect(`/login?passwordmia=1`);
     } else {
-        for (i = 0; i < users.length; i++) {
-            if (users[i].email == email) {
-                if (bcrypt.compareSync(password, users[i].password)) {
+        var results = await db_users.getUsers({ email: email, hashedPassword: password });
+
+        if (results) {
+            if (results.length == 1) { //there should only be 1 user in the db that matches
+                if (bcrypt.compareSync(password, results[0].password)) {
                     req.session.authenticated = true;
+                    req.session.username = results[0].username;
                     req.session.email = email;
+                    req.session.hashPW = password;
                     req.session.cookie.maxAge = expireTime;
 
                     res.redirect('/members');
                     return;
+                } else {
+                    res.redirect(`/login?accountmia=1`);
                 }
+            } else {
+                console.log('invalid number of users matched: ' + results.length + " (expected 1).");
+                res.redirect('/login');
+                return;
             }
         }
         //user and password combination not found
@@ -147,9 +140,8 @@ app.post('/loggingin', (req, res) => {
     }
 });
 
-app.get('/members', (req, res) => {
+app.get('/members', async (req, res) => {
     if (!req.session.authenticated) {
-        console.log("Hello")
         res.redirect('/login');
     }
     var images = [
@@ -158,14 +150,14 @@ app.get('/members', (req, res) => {
         'thegoodhandshake.jpg'
     ]
 
+    // Get the user's information from the database
+    var results = await db_users.getUsers({ email: req.session.email, hashedPassword: req.session.hashPW });
+    // Grab the primary key of this user
+    var pK = results[0].user_id
+    var TODO = await db_todos.getTODOS({ primary: pK });
+
     const randomIndex = Math.floor(Math.random() * images.length);
-    var html = `
-    <h1>Hello ` + req.session.email + `</hi>
-    ` + `<br><img src="` + images[randomIndex] + `"/>
-    <form action='/logout' method='get'>
-        <button>Sign out</button>
-    </form>`;
-    res.send(html);
+    res.render("members", { email: req.session.username, image: images[randomIndex], list: TODO });
 });
 
 app.get('/logout', (req, res) => {
@@ -178,11 +170,50 @@ app.get('/logout', (req, res) => {
     });
 });
 
+app.get('/createTables', async(req, res) => {
+
+    const create_tables = include('database/create_tables');
+
+    var success = create_tables.createTables();
+    if (success) {
+        res.render("successMessage", { message: "Created tables." });
+    } else {
+        res.render("errorMessage", { error: "Failed to create tables." });
+    }
+});
+
+app.post('/addTodo', async (req, res) => {
+    var description = req.body.todo;
+    // Get the user's information from the database
+    var results = await db_users.getUsers({ email: req.session.email, hashedPassword: req.session.hashPW });
+    // Grab the primary key of this user
+    var pK = results[0].user_id
+
+    console.log("The thing: " + description)
+
+    // Create the tables if not exist
+    const create_tables = include('database/create_tables');
+
+    var success_table = create_tables.createTables();
+
+    if (success_table) {
+        var success = await db_todos.createTODO({ descript: description, primary: pK})
+        if (success) {
+            res.redirect('/members')
+        } else {
+            res.render("errorMessage", { error: "Failed to create TODO." });
+        }
+    } else {
+        console.log("Error Table")
+    }
+
+});
+
 app.use(express.static(__dirname + "/public"))
 
 app.get("*", (req, res) => {
     res.status(404);
-    res.send("Page not found - 404");
+    res.render("404");
 })
 
 app.listen(port, () => {

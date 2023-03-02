@@ -1,0 +1,16 @@
+<%- include("templates/header") %> 
+    <form action='/loggingin' method='post'>
+        <input name='email' type='email' placeholder='email'>
+        <input name='password' type='password' placeholder='password'>
+        <button>Submit</button>
+    </form>
+    <% if (missingEmail && missingPass) { %>
+        <br> Email and Password not found. </br>
+    <% } else if (missingEmail) { %>
+        <br> Email not found. </br>
+    <% } else if (missingPass) { %>
+        <br> Password not found. </br>
+    <% } else if (missingAccount) { %>
+        <br> Email and Password not found. </br>
+    <% } %>
+<%- include("templates/footer") %> 
