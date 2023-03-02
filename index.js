@@ -120,17 +120,26 @@ app.post('/loggingin', async (req, res) => {
                 if (bcrypt.compareSync(password, results[0].password)) {
                     req.session.authenticated = true;
                     req.session.username = results[0].username;
+                    req.session.user_type = results[0].type;
                     req.session.email = email;
                     req.session.hashPW = password;
                     req.session.cookie.maxAge = expireTime;
-
-                    res.redirect('/members');
+                    
+                    if (req.session.user_type == "admin") {
+                        console.log("You're admin");
+                        res.redirect('/admin');
+                    } else {
+                        console.log("You're not admin")
+                        res.redirect('/todo'); 
+                    }
+                    
                     return;
                 } else {
                     res.redirect(`/login?accountmia=1`);
                 }
             } else {
                 console.log('invalid number of users matched: ' + results.length + " (expected 1).");
+                console.log(results)
                 res.redirect('/login');
                 return;
             }
@@ -140,24 +149,53 @@ app.post('/loggingin', async (req, res) => {
     }
 });
 
-app.get('/members', async (req, res) => {
-    if (!req.session.authenticated) {
-        res.redirect('/login');
+function isValidSession(req) {
+	if (req.session.authenticated) {
+		return true;
+	}
+	return false;
+}
+
+function sessionValidation(req, res, next) {
+	if (!isValidSession(req)) {
+		req.session.destroy();
+		res.redirect('/login');
+		return;
+	}
+	else {
+		next();
+	}
+}
+
+function isAdmin(req) {
+    if (req.session.user_type == 'admin') {
+        return true;
     }
+    return false;
+}
+
+function adminAuthorization(req, res, next) {
+	if (!isAdmin(req)) {
+        res.redirect('/todo');
+        return;
+	}
+	else {
+		next();
+	}
+}
+
+// Members page used from Node Website #1
+app.use('/members', sessionValidation);
+
+app.get('/members', async (req, res) => {
     var images = [
         'goodone.jpg',
         'ohho.jpg',
         'thegoodhandshake.jpg'
     ]
 
-    // Get the user's information from the database
-    var results = await db_users.getUsers({ email: req.session.email, hashedPassword: req.session.hashPW });
-    // Grab the primary key of this user
-    var pK = results[0].user_id
-    var TODO = await db_todos.getTODOS({ primary: pK });
-
     const randomIndex = Math.floor(Math.random() * images.length);
-    res.render("members", { email: req.session.username, image: images[randomIndex], list: TODO });
+    res.render("members", { email: req.session.username, image: images[randomIndex]});
 });
 
 app.get('/logout', (req, res) => {
@@ -169,18 +207,7 @@ app.get('/logout', (req, res) => {
         }
     });
 });
-
-app.get('/createTables', async(req, res) => {
-
-    const create_tables = include('database/create_tables');
-
-    var success = create_tables.createTables();
-    if (success) {
-        res.render("successMessage", { message: "Created tables." });
-    } else {
-        res.render("errorMessage", { error: "Failed to create tables." });
-    }
-});
+// End of Members section
 
 app.post('/addTodo', async (req, res) => {
     var description = req.body.todo;
@@ -199,7 +226,7 @@ app.post('/addTodo', async (req, res) => {
     if (success_table) {
         var success = await db_todos.createTODO({ descript: description, primary: pK})
         if (success) {
-            res.redirect('/members')
+            res.redirect('/todo')
         } else {
             res.render("errorMessage", { error: "Failed to create TODO." });
         }
@@ -207,6 +234,49 @@ app.post('/addTodo', async (req, res) => {
         console.log("Error Table")
     }
 
+});
+
+app.use('/todo', sessionValidation);
+app.use('/admin', adminAuthorization);
+app.use('/user/:id', adminAuthorization);
+
+app.get('/todo', async (req, res) => {
+    // Get the user's information from the database
+    var results = await db_users.getUsers({ email: req.session.email, hashedPassword: req.session.hashPW });
+    // Grab the primary key of this user
+    var pK = results[0].user_id
+    var TODO = await db_todos.getTODOS({ username: req.session.username, primary: pK });
+    res.render('todo', { username: req.session.username, list: TODO })
+});
+
+app.get('/createTables', async(req, res) => {
+
+    const create_tables = include('database/create_tables');
+
+    var success = create_tables.createTables();
+    if (success) {
+        res.render("successMessage", { message: "Created tables." });
+    } else {
+        res.render("errorMessage", { error: "Failed to create tables." });
+    }
+});
+
+app.get('/admin', async (req, res) => {
+    var allUsers = await db_users.getAllUsers();
+    res.render('admin', { username: req.session.username, list: allUsers })
+});
+
+app.get('/user/:id', async (req, res) => {
+    var id = req.params.id;
+    var allUsers = await db_users.getAllUsers();
+    if (id > allUsers.length) {
+        res.redirect('/*')
+    } else {
+        var results = await db_users.getUserById({ id: id });
+        var TODO = await db_todos.getTODOS({ username: results[0].username, primary: id });
+
+        res.render('user', { admin: req.session.username, user: results[0].username, list: TODO })
+    }
 });
 
 app.use(express.static(__dirname + "/public"))

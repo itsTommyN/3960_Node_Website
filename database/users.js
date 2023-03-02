@@ -28,12 +28,18 @@ async function createUser(postData) {
 
 async function getUsers(postData) {
     let getUsersSQL = `
-		SELECT user_id, username, email, password
-		FROM user;
+        SELECT user_id, username, email, password, type
+		FROM user
+		JOIN user_type USING (user_type_id)
+		WHERE email = :email;
 	`;
 
+    let params = {
+        email: postData.email,
+    }
+
     try {
-        const results = await database.query(getUsersSQL);
+        const results = await database.query(getUsersSQL, params);
 
         console.log("Successfully retrieved users");
         console.log(results[0]);
@@ -45,4 +51,49 @@ async function getUsers(postData) {
     }
 }
 
-module.exports = { createUser, getUsers };
+async function getUserById(postData) {
+    let getUsersSQL = `
+        SELECT user_id, username, email, password, type
+		FROM user
+		JOIN user_type USING (user_type_id)
+		WHERE user_id = :id;
+	`;
+
+    let params = {
+        id: postData.id,
+    }
+
+    try {
+        const results = await database.query(getUsersSQL, params);
+
+        console.log("Successfully retrieved users");
+        console.log(results[0]);
+        return results[0];
+    } catch (err) {
+        console.log("Error getting users");
+        console.log(err);
+        return false;
+    }
+}
+
+async function getAllUsers() {
+    let allUsersSQL = `
+        SELECT user_id, username, email, password, type
+        FROM user
+        JOIN user_type USING (user_type_id)
+        WHERE type = "user";
+    `
+    try {
+        const results = await database.query(allUsersSQL);
+
+        console.log("Successfully retrieved users");
+        console.log(results[0]);
+        return results[0];
+    } catch (err) {
+        console.log("Error getting users");
+        console.log(err);
+        return false;
+    }
+}
+
+module.exports = { createUser, getUsers, getUserById, getAllUsers };

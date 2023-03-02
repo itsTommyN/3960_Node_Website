@@ -2,25 +2,8 @@
     <h1>Hello <%= email %></hi>
        <br>
        <img src="<%= image %>"/>
-       <table>
-        <tr>
-            <th style="padding: 0 20px 0 20px">#</th>
-            <th style="padding: 0 20px 0 20px">Description</th>
-        </tr>
-        <!-- Add data from database -->
-        <% let i = 0 %>
-        <% for (i = 0; i < list.length; i++) { %>
-        <!-- <% - include('templates/todo', {num: i, description: list[i].description})  %> -->
-        <tr>
-            <td> <%= i + 1 %> </td>
-            <td> <%= list[i].description %> </td>
-        </tr>
-        <% console.log(list[i].description) %>
-        <% } %>
-       </table>
-       <form action='/addTodo' method='post'>
-        <input name="todo" type="text" placeholder="What needs to be done?">
-        <input type="submit" value="Submit">
+       <form action='/todo' method='get'>
+        <button>TODO</button>
        </form>
         <form action='/logout' method='get'>
             <button>Sign out</button>

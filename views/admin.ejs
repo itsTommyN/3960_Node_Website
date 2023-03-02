@@ -1,0 +1,13 @@
+<%- include("templates/header") %>
+You are logged in as <%=username %>
+<br>
+<br>
+Users
+<br>
+<ol>
+<% let i = 0 %>
+<% for (i = 0; i < list.length; i++) { %>
+<li><a href='/user/<%= list[i].user_id %>'><%= list[i].username %></a></li>
+<% } %>
+</ol>
+<%- include("templates/footer") %>
